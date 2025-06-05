@@ -5,20 +5,12 @@ import plotly.graph_objects as go
 from datetime import date, timedelta
 import re
 import random
-import locale
-
-# NOVO: Configura o locale para português para formatar o nome do mês
-try:
-    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-except locale.Error:
-    locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil.1252')
-
 
 # --- FUNÇÕES DE ANÁLISE ---
 
 @st.cache_data
 def carregar_dados_csv(arquivo_enviado):
-    """Carrega e prepara os dados do CSV."""
+    """Carrega e prepara os dados do CSV, tratando nomes de colunas."""
     try:
         df = pd.read_csv(arquivo_enviado)
         df.columns = df.columns.str.lower()
@@ -58,16 +50,21 @@ def obter_previsao(dados, dias_previsao):
 
 def mostrar_grafico_previsao(dados, modelo, df_previsao):
     """Cria e exibe o gráfico de previsão com Plotly."""
-    st.plotly_chart(go.Figure(
+    X_hist = dados[['date']].copy()
+    X_hist['date_ordinal'] = X_hist['date'].map(date.toordinal)
+    tendencia_historica = modelo.predict(X_hist[['date_ordinal']])
+    
+    fig = go.Figure(
         data=[
             go.Scatter(x=dados['date'], y=dados['close'], mode='lines', name='Preço Histórico', line=dict(color='royalblue')),
-            go.Scatter(x=dados['date'], y=modelo.predict(dados[['date']].apply(lambda x: x.map(date.toordinal))), mode='lines', name='Tendência (Regressão)', line=dict(color='orange', dash='dash')),
+            go.Scatter(x=dados['date'], y=tendencia_historica, mode='lines', name='Tendência (Regressão)', line=dict(color='orange', dash='dash')),
             go.Scatter(x=df_previsao['date'], y=df_previsao['previsao_close'], mode='lines', name='Previsão Futura', line=dict(color='red', dash='dot'))
         ],
         layout=go.Layout(title=f'Histórico e Previsão para {dados["ticker"].iloc[0]}', xaxis_title='Data', yaxis_title='Preço de Fechamento')
-    ), use_container_width=True)
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-# --- FUNÇÃO DE RECOMENDAÇÃO (ATUALIZADA) ---
+
 def mostrar_recomendacao(ultimo_preco, preco_previsto, dias_previsao):
     """Exibe a recomendação de forma mais direta."""
     st.subheader("Com base na previsão, minha recomendação é:")
@@ -101,7 +98,7 @@ def mostrar_estatisticas(dados):
     - **Retorno no Período Total:** `{retorno_periodo:.2f}%`
     """)
 
-# --- CÉREBRO DO CHATBOT (ATUALIZADO) ---
+# --- CÉREBRO DO CHATBOT ---
 def interpretar_pergunta(pergunta):
     """Interpreta a pergunta do usuário usando palavras-chave."""
     pergunta = pergunta.lower()
@@ -113,7 +110,6 @@ def interpretar_pergunta(pergunta):
         return "mostrar_tabela"
     elif re.search(r'estatísticas|estatisticas|resumo|números|numeros|máximo|maximo|mínimo|minimo', pergunta):
         return "mostrar_estatisticas"
-    # NOVA HABILIDADE:
     elif re.search(r'última|ultima|recente|final|atualização|atualizacao', pergunta):
         return "mostrar_ultima_data"
     elif re.search(r'olá|ola|oi|bom dia|boa tarde|boa noite|ajuda', pergunta):
@@ -128,7 +124,6 @@ st.title("🤖 Chatbot Analisador de Ações")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ... (Barra lateral e exibição de histórico permanecem iguais)
 with st.sidebar:
     st.header("Configurações da Análise")
     arquivo_enviado = st.file_uploader("1. Envie seu arquivo CSV:", type=['csv'])
@@ -151,7 +146,6 @@ for message in st.session_state.messages:
         if "stats_data" in message: mostrar_estatisticas(message["stats_data"])
         if "table_data" in message: st.dataframe(message["table_data"])
 
-# --- LÓGICA DO CHATBOT (ATUALIZADA) ---
 if dados_completos is not None:
     if prompt := st.chat_input(f"Pergunte sobre {ticker_selecionado}..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -166,25 +160,21 @@ if dados_completos is not None:
             frases_recomendacao = ["Analisando os números para te dar uma recomendação...", "Com base na projeção, minha sugestão é a seguinte:", "Ok, aqui vai minha recomendação sobre o que fazer:"]
             
             if acao == "desconhecido":
-                # ... (mesma lógica)
                 resposta = "Desculpe, não entendi. Você pode pedir pelo 'gráfico', 'recomendação', 'estatísticas' ou 'tabela de dados'."
                 st.markdown(resposta)
                 st.session_state.messages.append({"role": "assistant", "content": resposta})
 
             elif acao == "saudacao":
-                # ... (mesma lógica)
                 resposta = f"Olá! Sou seu assistente de análise para a ação **{ticker_selecionado}**. Como posso ajudar? Você pode pedir pelo 'gráfico', 'recomendação' ou por 'estatísticas'."
                 st.markdown(resposta)
                 st.session_state.messages.append({"role": "assistant", "content": resposta})
 
             elif dados_ticker.empty:
-                # ... (mesma lógica)
                 resposta = f"Não encontrei dados para '{ticker_selecionado}'."
                 st.markdown(resposta)
                 st.session_state.messages.append({"role": "assistant", "content": resposta})
 
             else:
-                # --- LÓGICA DE RESPOSTA ATUALIZADA ---
                 if acao in ["mostrar_grafico", "dar_recomendacao"]:
                     ultimo_preco, preco_previsto, modelo, df_previsao = obter_previsao(dados_ticker, dias_previsao)
                 
@@ -198,22 +188,25 @@ if dados_completos is not None:
                     mostrar_recomendacao(ultimo_preco, preco_previsto, dias_previsao)
                     st.session_state.messages.append({"role": "assistant", "recommendation_data": {"ultimo_preco": ultimo_preco, "preco_previsto": preco_previsto, "dias_previsao": dias_previsao}})
                 
-                # NOVO BLOCO DE RESPOSTA
                 elif acao == "mostrar_ultima_data":
                     ultima_data = dados_ticker['date'].iloc[-1]
-                    # Formata a data para um formato mais amigável, ex: "05 de junho de 2025"
-                    ultima_data_formatada = ultima_data.strftime('%d de %B de %Y')
+                    meses = {
+                        1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril", 5: "maio", 6: "junho",
+                        7: "julho", 8: "agosto", 9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro"
+                    }
+                    dia = ultima_data.day
+                    mes = meses[ultima_data.month]
+                    ano = ultima_data.year
+                    ultima_data_formatada = f"{dia} de {mes} de {ano}"
                     resposta = f"A última entrada de dados que tenho para **{ticker_selecionado}** é do dia **{ultima_data_formatada}**."
                     st.markdown(resposta)
                     st.session_state.messages.append({"role": "assistant", "content": resposta})
                 
                 elif acao == "mostrar_estatisticas":
-                    # ... (mesma lógica)
                     mostrar_estatisticas(dados_ticker)
                     st.session_state.messages.append({"role": "assistant", "stats_data": dados_ticker})
                     
                 elif acao == "mostrar_tabela":
-                    # ... (mesma lógica)
                     st.subheader("Aqui estão os dados históricos:")
                     st.dataframe(dados_ticker)
                     st.session_state.messages.append({"role": "assistant", "table_data": dados_ticker})
