@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from datetime import date, timedelta
 import re
 import random
+import numpy as np
 
 # --- FUNÇÕES DE ANÁLISE ---
 
@@ -14,14 +15,11 @@ def carregar_dados_csv(arquivo_enviado):
     try:
         df = pd.read_csv(arquivo_enviado)
         df.columns = df.columns.str.lower()
-        if 'date' in df.columns:
-            pass
-        elif 'unnamed: 0' in df.columns:
-            df.rename(columns={'unnamed: 0': 'date'}, inplace=True)
-        else:
-            return None
+        if 'date' in df.columns: pass
+        elif 'unnamed: 0' in df.columns: df.rename(columns={'unnamed: 0': 'date'}, inplace=True)
+        else: return None
         df['date'] = pd.to_datetime(df['date'])
-        df.sort_values(by='date', inplace=True) # Garante que os dados estão ordenados
+        df.sort_values(by='date', inplace=True)
         return df
     except Exception as e:
         print(f"Erro ao carregar dados: {e}")
@@ -35,17 +33,14 @@ def obter_previsao(dados, dias_previsao):
     y = df_treino['close']
     modelo = LinearRegression()
     modelo.fit(X, y)
-    
     data_final_historico = df_treino['date'].max()
     ultimos_dias = pd.date_range(start=data_final_historico + timedelta(days=1), periods=dias_previsao)
     df_previsao = pd.DataFrame(ultimos_dias, columns=['date'])
     df_previsao['date_ordinal'] = df_previsao['date'].map(date.toordinal)
     previsoes = modelo.predict(df_previsao[['date_ordinal']])
     df_previsao['previsao_close'] = previsoes
-    
     ultimo_preco_real = dados['close'].iloc[-1]
     preco_previsto_final = df_previsao['previsao_close'].iloc[-1]
-    
     return ultimo_preco_real, preco_previsto_final, modelo, df_previsao
 
 def mostrar_grafico_previsao(dados, modelo, df_previsao):
@@ -53,38 +48,27 @@ def mostrar_grafico_previsao(dados, modelo, df_previsao):
     X_hist = dados[['date']].copy()
     X_hist['date_ordinal'] = X_hist['date'].map(date.toordinal)
     tendencia_historica = modelo.predict(X_hist[['date_ordinal']])
-    
-    fig = go.Figure(
-        data=[
-            go.Scatter(x=dados['date'], y=dados['close'], mode='lines', name='Preço Histórico', line=dict(color='royalblue')),
-            go.Scatter(x=dados['date'], y=tendencia_historica, mode='lines', name='Tendência (Regressão)', line=dict(color='orange', dash='dash')),
-            go.Scatter(x=df_previsao['date'], y=df_previsao['previsao_close'], mode='lines', name='Previsão Futura', line=dict(color='red', dash='dot'))
-        ],
-        layout=go.Layout(title=f'Histórico e Previsão para {dados["ticker"].iloc[0]}', xaxis_title='Data', yaxis_title='Preço de Fechamento')
-    )
+    fig = go.Figure(data=[
+        go.Scatter(x=dados['date'], y=dados['close'], mode='lines', name='Preço Histórico'),
+        go.Scatter(x=dados['date'], y=tendencia_historica, mode='lines', name='Tendência (Regressão)'),
+        go.Scatter(x=df_previsao['date'], y=df_previsao['previsao_close'], mode='lines', name='Previsão Futura')
+    ], layout=go.Layout(title=f'Histórico e Previsão para {dados["ticker"].iloc[0]}'))
     st.plotly_chart(fig, use_container_width=True)
-
 
 def mostrar_recomendacao(ultimo_preco, preco_previsto, dias_previsao):
     """Exibe a recomendação de forma mais direta."""
     st.subheader("Com base na previsão, minha recomendação é:")
     variacao_percentual = ((preco_previsto - ultimo_preco) / ultimo_preco) * 100
-    
     frase_mudanca = f"A mudança prevista para os próximos {dias_previsao} dias é de **{variacao_percentual:.2f}%**"
-    
-    if variacao_percentual > 5:
-        frase_recomendacao = "logo, **recomendo a compra**."
-    elif variacao_percentual < -5:
-        frase_recomendacao = "logo, **recomendo a venda**."
-    else:
-        frase_recomendacao = "logo, **não recomendo uma nova operação** no momento (manter posição)."
-        
+    if variacao_percentual > 5: frase_recomendacao = "logo, **recomendo a compra**."
+    elif variacao_percentual < -5: frase_recomendacao = "logo, **recomendo a venda**."
+    else: frase_recomendacao = "logo, **não recomendo uma nova operação** no momento (manter posição)."
     st.markdown(f"{frase_mudanca}, {frase_recomendacao}")
-    st.warning("Lembre-se, esta é uma análise simplificada e não uma recomendação financeira profissional.")
+    st.warning("Lembre-se, esta é uma análise simplificada.")
 
 def mostrar_estatisticas(dados):
     """Calcula e exibe estatísticas básicas sobre a ação."""
-    st.subheader("Aqui estão algumas estatísticas sobre os dados históricos:")
+    st.subheader(f"Estatísticas para {dados['ticker'].iloc[0]}:")
     preco_max = dados['close'].max()
     data_max = dados.loc[dados['close'].idxmax()]['date'].strftime('%d/%m/%Y')
     preco_min = dados['close'].min()
@@ -92,123 +76,187 @@ def mostrar_estatisticas(dados):
     ultimo_preco = dados['close'].iloc[-1]
     retorno_periodo = ((ultimo_preco / dados['close'].iloc[0]) - 1) * 100
     st.markdown(f"""
-    - **Último Preço Registrado:** ${ultimo_preco:,.2f}
-    - **Preço Máximo no Período:** ${preco_max:,.2f} (em {data_max})
-    - **Preço Mínimo no Período:** ${preco_min:,.2f} (em {data_min})
-    - **Retorno no Período Total:** `{retorno_periodo:.2f}%`
+    - **Último Preço:** ${ultimo_preco:,.2f}
+    - **Preço Máximo:** ${preco_max:,.2f} (em {data_max})
+    - **Preço Mínimo:** ${preco_min:,.2f} (em {data_min})
+    - **Retorno no Período:** `{retorno_periodo:.2f}%`
     """)
 
+# --- NOVA FUNÇÃO DE EXPLICAÇÃO ---
+def mostrar_explicacoes_metricas():
+    """Cria um expansor com a explicação das principais métricas financeiras."""
+    with st.expander("🤔 O que esses valores significam?"):
+        st.markdown("""
+        - **Retorno Esperado (Anual):** É o quanto, em média, se espera que a carteira ou o ativo renda ao longo de um ano, com base nos dados históricos.
+
+        - **Risco (Volatilidade Anual):** Mede o "sobe e desce" da carteira. Um valor de risco mais alto significa que o valor da carteira/ativo tende a oscilar mais, tornando o investimento mais imprevisível.
+
+        - **Índice de Sharpe:** É a principal métrica para avaliar a qualidade de um investimento. Ele mede o retorno que você obteve para cada unidade de risco que correu. Um índice de Sharpe mais alto é sempre melhor.
+            - **< 1.0:** O retorno pode não estar compensando o risco assumido.
+            - **> 1.0:** Geralmente considerado um bom desempenho, onde o retorno compensa o risco.
+        """)
+
+def mostrar_sharpe_ratio(dados, taxa_livre_risco=0):
+    """Calcula e exibe o Índice de Sharpe anualizado para um único ativo."""
+    st.subheader(f"Análise de Risco x Retorno (Índice de Sharpe) para {dados['ticker'].iloc[0]}")
+    retornos = dados['close'].pct_change().dropna()
+    sharpe_ratio = (retornos.mean() - taxa_livre_risco) / retornos.std() * np.sqrt(252)
+    st.metric(label="Índice de Sharpe Anualizado", value=f"{sharpe_ratio:.2f}")
+    if sharpe_ratio < 1: st.warning("O retorno pode não estar compensando o risco corrido.")
+    else: st.success("O ativo apresentou um bom retorno para o nível de risco.")
+    mostrar_explicacoes_metricas() # Adiciona as explicações
+
+def mostrar_grafico_comparativo(dados_completos, tickers):
+    """Cria e exibe um gráfico comparando a performance normalizada de vários tickers."""
+    st.subheader(f"Gráfico Comparativo de Performance para {', '.join(tickers)}")
+    carteira_df = dados_completos[dados_completos['ticker'].isin(tickers)]
+    tabela_precos = carteira_df.pivot(index='date', columns='ticker', values='close').dropna()
+    df_normalizado = (tabela_precos / tabela_precos.iloc[0]) * 100
+    fig = go.Figure()
+    for ticker in df_normalizado.columns:
+        fig.add_trace(go.Scatter(x=df_normalizado.index, y=df_normalizado[ticker], mode='lines', name=ticker))
+    fig.update_layout(title="Performance Normalizada (Base 100)", xaxis_title='Data', yaxis_title='Performance')
+    st.plotly_chart(fig, use_container_width=True)
+
+def calcular_e_mostrar_portfolio_otimo(dados_completos, tickers_selecionados, num_simulacoes=10000):
+    """Realiza a otimização de portfólio e exibe visualizações avançadas."""
+    st.subheader(f"Análise de Carteira Ótima para {', '.join(tickers_selecionados)}")
+    carteira_df = dados_completos[dados_completos['ticker'].isin(tickers_selecionados)]
+    tabela_precos = carteira_df.pivot(index='date', columns='ticker', values='close').dropna()
+    if tabela_precos.shape[0] < 2:
+        st.error("Não há dados históricos suficientes para os tickers selecionados para realizar a análise.")
+        return
+    retornos_diarios = tabela_precos.pct_change().dropna()
+    resultados_simulacao, pesos_aleatorios = [], []
+    with st.spinner(f"Realizando {num_simulacoes} simulações de Monte Carlo..."):
+        for _ in range(num_simulacoes):
+            pesos = np.random.random(len(tickers_selecionados))
+            pesos /= np.sum(pesos)
+            pesos_aleatorios.append(pesos)
+            retorno = np.sum(retornos_diarios.mean() * pesos) * 252
+            volatilidade = np.sqrt(np.dot(pesos.T, np.dot(retornos_diarios.cov() * 252, pesos)))
+            resultados_simulacao.append([retorno, volatilidade, retorno / volatilidade])
+    simulacao_df = pd.DataFrame(resultados_simulacao, columns=['retorno', 'volatilidade', 'sharpe'])
+    max_sharpe_port = simulacao_df.loc[simulacao_df['sharpe'].idxmax()]
+    min_vol_port = simulacao_df.loc[simulacao_df['volatilidade'].idxmin()]
+    
+    st.markdown("#### Fronteira Eficiente: O Universo de Possibilidades")
+    fig_fronteira = go.Figure()
+    fig_fronteira.add_trace(go.Scatter(x=simulacao_df['volatilidade'], y=simulacao_df['retorno'], mode='markers', marker=dict(color=simulacao_df['sharpe'], showscale=True, colorscale='Viridis', colorbar=dict(title='Índice de Sharpe'))))
+    fig_fronteira.add_trace(go.Scatter(x=[max_sharpe_port['volatilidade'], min_vol_port['volatilidade']], y=[max_sharpe_port['retorno'], min_vol_port['retorno']], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='Carteiras Otimizadas'))
+    fig_fronteira.update_layout(title='Fronteira Eficiente de Markowitz', xaxis_title='Risco (Volatilidade Anual)', yaxis_title='Retorno Anual', showlegend=False)
+    st.plotly_chart(fig_fronteira, use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("#### Detalhes das Carteiras Otimizadas")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("##### Carteira de Risco Mínimo")
+        pesos_min_vol = pesos_aleatorios[simulacao_df['volatilidade'].idxmin()]
+        fig_min_vol = go.Figure(data=[go.Pie(labels=tickers_selecionados, values=pesos_min_vol, hole=.4, textinfo='label+percent')])
+        fig_min_vol.update_layout(showlegend=False, margin=dict(l=10, r=10, t=20, b=10))
+        st.plotly_chart(fig_min_vol, use_container_width=True)
+        st.info(f"**Retorno:** `{(min_vol_port['retorno']*100):.2f}%` | **Risco:** `{(min_vol_port['volatilidade']*100):.2f}%`")
+    with col2:
+        st.markdown("##### Carteira Ótima (Max Sharpe)")
+        pesos_max_sharpe = pesos_aleatorios[simulacao_df['sharpe'].idxmax()]
+        fig_max_sharpe = go.Figure(data=[go.Pie(labels=tickers_selecionados, values=pesos_max_sharpe, hole=.4, textinfo='label+percent')])
+        fig_max_sharpe.update_layout(showlegend=False, margin=dict(l=10, r=10, t=20, b=10))
+        st.plotly_chart(fig_max_sharpe, use_container_width=True)
+        st.success(f"**Retorno:** `{(max_sharpe_port['retorno']*100):.2f}%` | **Risco:** `{(max_sharpe_port['volatilidade']*100):.2f}%`")
+    
+    mostrar_explicacoes_metricas() # Adiciona as explicações
+
+
 # --- CÉREBRO DO CHATBOT ---
-def interpretar_pergunta(pergunta):
-    """Interpreta a pergunta do usuário usando palavras-chave."""
+def extrair_tickers(prompt):
+    """Usa RegEx para encontrar TODOS os tickers na pergunta."""
+    return re.findall(r'\b([A-Z]{1,5}\d{0,2})\b', prompt.upper())
+
+def interpretar_pergunta_acao(pergunta):
+    """Interpreta a ação que o usuário quer fazer."""
     pergunta = pergunta.lower()
-    if re.search(r'gráfico|grafico|previsão|previsao|plotar|preço|preco', pergunta):
-        return "mostrar_grafico"
-    elif re.search(r'recomendação|recomendacao|compro|vendo|vender|comprar|mantenho|manter', pergunta):
-        return "dar_recomendacao"
-    elif re.search(r'tabela|dados|histórico|historico', pergunta):
-        return "mostrar_tabela"
-    elif re.search(r'estatísticas|estatisticas|resumo|números|numeros|máximo|maximo|mínimo|minimo', pergunta):
-        return "mostrar_estatisticas"
-    elif re.search(r'última|ultima|recente|final|atualização|atualizacao', pergunta):
-        return "mostrar_ultima_data"
-    elif re.search(r'olá|ola|oi|bom dia|boa tarde|boa noite|ajuda', pergunta):
-        return "saudacao"
+    if re.search(r'markowitz|carteira|portfólio|portfolio|otima|ótima', pergunta): return "analisar_carteira"
+    if re.search(r'comparar|comparativo| contra | vs ', pergunta): return "comparar_grafico"
+    if re.search(r'sharpe|risco', pergunta): return "mostrar_sharpe"
+    if re.search(r'gráfico|grafico|previsão|previsao', pergunta): return "mostrar_grafico"
+    elif re.search(r'recomendação|recomendacao', pergunta): return "dar_recomendacao"
+    elif re.search(r'tabela|dados|histórico|historico', pergunta): return "mostrar_tabela"
+    elif re.search(r'estatísticas|estatisticas|resumo', pergunta): return "mostrar_estatisticas"
+    elif re.search(r'última|ultima|recente|final', pergunta): return "mostrar_ultima_data"
+    elif re.search(r'olá|ola|oi|ajuda', pergunta): return "saudacao"
     return "desconhecido"
 
+
 # --- INTERFACE PRINCIPAL DO STREAMLIT ---
-
 st.set_page_config(page_title="Chatbot de Análise de Ações", layout="wide")
-st.title("🤖 Chatbot Analisador de Ações")
+st.title("🤖 Chatbot Analisador de Ações Inteligente")
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+if "messages" not in st.session_state: st.session_state.messages = []
+if "ticker_atual" not in st.session_state: st.session_state.ticker_atual = None
 
 with st.sidebar:
-    st.header("Configurações da Análise")
+    st.header("Configurações")
     arquivo_enviado = st.file_uploader("1. Envie seu arquivo CSV:", type=['csv'])
-    
-    dados_completos = None
-    if arquivo_enviado:
-        dados_completos = carregar_dados_csv(arquivo_enviado)
-        if dados_completos is not None:
-            lista_tickers = sorted(dados_completos['ticker'].unique())
-            ticker_selecionado = st.selectbox("2. Escolha uma Ação:", lista_tickers)
-            dias_previsao = st.slider("3. Dias para Previsão Futura:", 1, 30, 7)
-        else:
-            st.error("O arquivo enviado não pôde ser processado.")
+    dias_previsao = st.slider("2. Dias para Previsão Futura:", 1, 30, 7)
+
+dados_completos = None
+if arquivo_enviado:
+    dados_completos = carregar_dados_csv(arquivo_enviado)
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        if "content" in message: st.markdown(message["content"])
-        if "chart_data" in message: mostrar_grafico_previsao(message["chart_data"]["dados"], message["chart_data"]["modelo"], message["chart_data"]["df_previsao"])
-        if "recommendation_data" in message: mostrar_recomendacao(message["recommendation_data"]["ultimo_preco"], message["recommendation_data"]["preco_previsto"], message["recommendation_data"]["dias_previsao"])
-        if "stats_data" in message: mostrar_estatisticas(message["stats_data"])
-        if "table_data" in message: st.dataframe(message["table_data"])
+        st.markdown(message["content"])
 
-if dados_completos is not None:
-    if prompt := st.chat_input(f"Pergunte sobre {ticker_selecionado}..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+if prompt := st.chat_input("Pergunte sobre uma ou mais ações..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"): st.markdown(prompt)
 
-        with st.chat_message("assistant"):
-            acao = interpretar_pergunta(prompt)
-            dados_ticker = dados_completos[dados_completos['ticker'] == ticker_selecionado].copy()
+    with st.chat_message("assistant"):
+        if dados_completos is None:
+            resposta = "Por favor, primeiro envie um arquivo CSV com os dados na barra lateral."
+            st.markdown(resposta)
+            st.session_state.messages.append({"role": "assistant", "content": resposta})
+        else:
+            tickers_encontrados = extrair_tickers(prompt)
+            acao = interpretar_pergunta_acao(prompt)
+            lista_tickers_validos_no_csv = dados_completos['ticker'].unique()
             
-            frases_grafico = ["Claro, preparando o gráfico para você...", "Ok, aqui está a análise visual da previsão:", "Com certeza! Veja o gráfico de preços e a tendência:"]
-            frases_recomendacao = ["Analisando os números para te dar uma recomendação...", "Com base na projeção, minha sugestão é a seguinte:", "Ok, aqui vai minha recomendação sobre o que fazer:"]
+            contexto_mudou = False
+            if tickers_encontrados:
+                primeiro_ticker_valido = next((t for t in tickers_encontrados if t in lista_tickers_validos_no_csv), None)
+                if primeiro_ticker_valido and primeiro_ticker_valido != st.session_state.ticker_atual:
+                    st.session_state.ticker_atual = primeiro_ticker_valido
+                    contexto_mudou = True
+
+            if acao in ["analisar_carteira", "comparar_grafico"]:
+                tickers_validos_na_pergunta = [t for t in tickers_encontrados if t in lista_tickers_validos_no_csv]
+                if len(tickers_validos_na_pergunta) < 2:
+                    st.markdown(f"Para esta análise, por favor, mencione pelo menos 2 tickers válidos na sua pergunta.")
+                else:
+                    if acao == "analisar_carteira":
+                        calcular_e_mostrar_portfolio_otimo(dados_completos, tickers_validos_na_pergunta)
+                    elif acao == "comparar_grafico":
+                        mostrar_grafico_comparativo(dados_completos, tickers_validos_na_pergunta)
             
-            if acao == "desconhecido":
-                resposta = "Desculpe, não entendi. Você pode pedir pelo 'gráfico', 'recomendação', 'estatísticas' ou 'tabela de dados'."
-                st.markdown(resposta)
-                st.session_state.messages.append({"role": "assistant", "content": resposta})
-
-            elif acao == "saudacao":
-                resposta = f"Olá! Sou seu assistente de análise para a ação **{ticker_selecionado}**. Como posso ajudar? Você pode pedir pelo 'gráfico', 'recomendação' ou por 'estatísticas'."
-                st.markdown(resposta)
-                st.session_state.messages.append({"role": "assistant", "content": resposta})
-
-            elif dados_ticker.empty:
-                resposta = f"Não encontrei dados para '{ticker_selecionado}'."
-                st.markdown(resposta)
-                st.session_state.messages.append({"role": "assistant", "content": resposta})
-
-            else:
-                if acao in ["mostrar_grafico", "dar_recomendacao"]:
-                    ultimo_preco, preco_previsto, modelo, df_previsao = obter_previsao(dados_ticker, dias_previsao)
-                
-                if acao == "mostrar_grafico":
-                    st.markdown(random.choice(frases_grafico))
-                    mostrar_grafico_previsao(dados_ticker, modelo, df_previsao)
-                    st.session_state.messages.append({"role": "assistant", "chart_data": {"dados": dados_ticker, "modelo": modelo, "df_previsao": df_previsao}})
-
-                elif acao == "dar_recomendacao":
-                    st.markdown(random.choice(frases_recomendacao))
-                    mostrar_recomendacao(ultimo_preco, preco_previsto, dias_previsao)
-                    st.session_state.messages.append({"role": "assistant", "recommendation_data": {"ultimo_preco": ultimo_preco, "preco_previsto": preco_previsto, "dias_previsao": dias_previsao}})
-                
-                elif acao == "mostrar_ultima_data":
-                    ultima_data = dados_ticker['date'].iloc[-1]
-                    meses = {
-                        1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril", 5: "maio", 6: "junho",
-                        7: "julho", 8: "agosto", 9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro"
-                    }
-                    dia = ultima_data.day
-                    mes = meses[ultima_data.month]
-                    ano = ultima_data.year
-                    ultima_data_formatada = f"{dia} de {mes} de {ano}"
-                    resposta = f"A última entrada de dados que tenho para **{ticker_selecionado}** é do dia **{ultima_data_formatada}**."
-                    st.markdown(resposta)
-                    st.session_state.messages.append({"role": "assistant", "content": resposta})
-                
-                elif acao == "mostrar_estatisticas":
-                    mostrar_estatisticas(dados_ticker)
-                    st.session_state.messages.append({"role": "assistant", "stats_data": dados_ticker})
+            elif acao not in ["saudacao", "desconhecido"] and st.session_state.ticker_atual:
+                if contexto_mudou:
+                    st.markdown(f"Ok, mudei o foco da análise para **{st.session_state.ticker_atual}**. O que gostaria de saber?")
+                else:
+                    dados_ticker = dados_completos[dados_completos['ticker'] == st.session_state.ticker_atual].copy()
+                    if acao == "mostrar_sharpe": mostrar_sharpe_ratio(dados_ticker)
+                    elif acao == "mostrar_grafico":
+                        ultimo_preco, preco_previsto, modelo, df_previsao = obter_previsao(dados_ticker, dias_previsao)
+                        mostrar_grafico_previsao(dados_ticker, modelo, df_previsao)
+                    elif acao == "dar_recomendacao":
+                        ultimo_preco, preco_previsto, modelo, df_previsao = obter_previsao(dados_ticker, dias_previsao)
+                        mostrar_recomendacao(ultimo_preco, preco_previsto, dias_previsao)
+                    elif acao == "mostrar_estatisticas": mostrar_estatisticas(dados_ticker)
+                    elif acao == "mostrar_tabela": st.dataframe(dados_ticker)
                     
-                elif acao == "mostrar_tabela":
-                    st.subheader("Aqui estão os dados históricos:")
-                    st.dataframe(dados_ticker)
-                    st.session_state.messages.append({"role": "assistant", "table_data": dados_ticker})
-else:
-    st.info("Para começar, por favor, envie um arquivo CSV na barra lateral esquerda.")
+            elif acao == "saudacao":
+                ticker_contexto = f" sobre **{st.session_state.ticker_atual}**" if st.session_state.ticker_atual else ""
+                st.markdown(f"Olá! Sou seu assistente de análise{ticker_contexto}. Como posso ajudar?")
+            
+            else: 
+                st.markdown("Não sei sobre qual ação você quer conversar. Por favor, inclua o ticker na sua pergunta (ex: 'Qual a previsão para a TTWO?').")
