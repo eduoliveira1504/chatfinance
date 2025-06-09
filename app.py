@@ -4,7 +4,6 @@ from sklearn.linear_model import LinearRegression
 import plotly.graph_objects as go
 from datetime import date, timedelta
 import re
-import random
 import numpy as np
 
 # --- FUNÇÕES DE ANÁLISE ---
@@ -85,7 +84,7 @@ def mostrar_estatisticas(dados):
 # --- NOVA FUNÇÃO DE EXPLICAÇÃO ---
 def mostrar_explicacoes_metricas():
     """Cria um expansor com a explicação das principais métricas financeiras."""
-    with st.expander("🤔 O que esses valores significam?"):
+    with st.expander("☝🏻🤓 O que esses valores significam?"):
         st.markdown("""
         - **Retorno Esperado (Anual):** É o quanto, em média, se espera que a carteira ou o ativo renda ao longo de um ano, com base nos dados históricos.
 
@@ -188,7 +187,7 @@ def interpretar_pergunta_acao(pergunta):
     return "desconhecido"
 
 
-# --- INTERFACE PRINCIPAL DO STREAMLIT ---
+# --- INTERFACE PRINCIPAL DO STREAMLIT (com lógica do chat modificada) ---
 st.set_page_config(page_title="Chatbot de Análise de Ações", layout="wide")
 st.title("🤖 Chatbot Analisador de Ações Inteligente")
 
@@ -229,6 +228,9 @@ if prompt := st.chat_input("Pergunte sobre uma ou mais ações..."):
                     st.session_state.ticker_atual = primeiro_ticker_valido
                     contexto_mudou = True
 
+            # --- INÍCIO DA LÓGICA MODIFICADA ---
+
+            # CASO 1: Análise de múltiplos tickers (carteira ou comparação)
             if acao in ["analisar_carteira", "comparar_grafico"]:
                 tickers_validos_na_pergunta = [t for t in tickers_encontrados if t in lista_tickers_validos_no_csv]
                 if len(tickers_validos_na_pergunta) < 2:
@@ -239,24 +241,33 @@ if prompt := st.chat_input("Pergunte sobre uma ou mais ações..."):
                     elif acao == "comparar_grafico":
                         mostrar_grafico_comparativo(dados_completos, tickers_validos_na_pergunta)
             
+            # CASO 2: O usuário muda o ticker mas NÃO especifica uma ação clara (ex: digita só "TTWO")
+            elif contexto_mudou and acao in ["desconhecido", "saudacao"]:
+                st.markdown(f"Ok, mudei o foco da análise para **{st.session_state.ticker_atual}**. O que gostaria de saber?")
+
+            # CASO 3: Há uma ação clara e um ticker em foco (seja ele novo ou antigo)
             elif acao not in ["saudacao", "desconhecido"] and st.session_state.ticker_atual:
-                if contexto_mudou:
-                    st.markdown(f"Ok, mudei o foco da análise para **{st.session_state.ticker_atual}**. O que gostaria de saber?")
-                else:
-                    dados_ticker = dados_completos[dados_completos['ticker'] == st.session_state.ticker_atual].copy()
-                    if acao == "mostrar_sharpe": mostrar_sharpe_ratio(dados_ticker)
-                    elif acao == "mostrar_grafico":
-                        ultimo_preco, preco_previsto, modelo, df_previsao = obter_previsao(dados_ticker, dias_previsao)
-                        mostrar_grafico_previsao(dados_ticker, modelo, df_previsao)
-                    elif acao == "dar_recomendacao":
-                        ultimo_preco, preco_previsto, modelo, df_previsao = obter_previsao(dados_ticker, dias_previsao)
-                        mostrar_recomendacao(ultimo_preco, preco_previsto, dias_previsao)
-                    elif acao == "mostrar_estatisticas": mostrar_estatisticas(dados_ticker)
-                    elif acao == "mostrar_tabela": st.dataframe(dados_ticker)
-                    
-            elif acao == "saudacao":
-                ticker_contexto = f" sobre **{st.session_state.ticker_atual}**" if st.session_state.ticker_atual else ""
-                st.markdown(f"Olá! Sou seu assistente de análise{ticker_contexto}. Como posso ajudar?")
+                dados_ticker = dados_completos[dados_completos['ticker'] == st.session_state.ticker_atual].copy()
+                
+                if contexto_mudou: # Opcional: Adiciona uma pequena confirmação antes do resultado
+                    st.markdown(f"Analisando **{st.session_state.ticker_atual}**...")
+
+                if acao == "mostrar_sharpe": mostrar_sharpe_ratio(dados_ticker)
+                elif acao == "mostrar_grafico":
+                    ultimo_preco, preco_previsto, modelo, df_previsao = obter_previsao(dados_ticker, dias_previsao)
+                    mostrar_grafico_previsao(dados_ticker, modelo, df_previsao)
+                elif acao == "dar_recomendacao":
+                    ultimo_preco, preco_previsto, modelo, df_previsao = obter_previsao(dados_ticker, dias_previsao)
+                    mostrar_recomendacao(ultimo_preco, preco_previsto, dias_previsao)
+                elif acao == "mostrar_estatisticas": mostrar_estatisticas(dados_ticker)
+                elif acao == "mostrar_tabela": st.dataframe(dados_ticker)
             
+            # CASO 4: Saudação geral
+            elif acao == "saudacao":
+                st.markdown(f"Olá! Sou seu assistente de análises financeiras!\n Você pode me perguntar sobre: Previsão/Gráfico, Recomendação, Risco/Sharpe, Estatísticas, Comparação, Carteira Ótima, Dados Brutos\n\n Ainda estou em desenvolvimento, então é possível que alguns pontos ainda não estejam 100%!\nObrigado pela coloboração!") 
+            
+            # CASO 5: Fallback - Não entendeu ou não há ticker em foco
             else: 
                 st.markdown("Não sei sobre qual ação você quer conversar. Por favor, inclua o ticker na sua pergunta (ex: 'Qual a previsão para a TTWO?').")
+
+            
