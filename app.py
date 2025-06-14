@@ -147,17 +147,17 @@ def calcular_e_mostrar_portfolio_otimo(dados_completos, tickers_selecionados, nu
     st.plotly_chart(fig_fronteira, use_container_width=True)
     
     st.markdown("---")
-    st.markdown("#### Análise de Carteira Ótima")
+    st.markdown("#### Análise de Carteira Ótima (Markowitz)")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("##### Carteira Ótima de Risco Mínimo (Markowitz)")
+        st.markdown("##### Carteira Ótima de Risco Mínimo ")
         pesos_min_vol = pesos_aleatorios[simulacao_df['volatilidade'].idxmin()]
         fig_min_vol = go.Figure(data=[go.Pie(labels=tickers_selecionados, values=pesos_min_vol, hole=.4, textinfo='label+percent')])
         fig_min_vol.update_layout(showlegend=False, margin=dict(l=10, r=10, t=20, b=10))
         st.plotly_chart(fig_min_vol, use_container_width=True)
         st.info(f"**Retorno:** `{(min_vol_port['retorno']*100):.2f}%` | **Risco:** `{(min_vol_port['volatilidade']*100):.2f}%`")
     with col2:
-        st.markdown("##### Carteira Ótima Ricso Máximo")
+        st.markdown("##### Carteira Ótima Risco Máximo")
         pesos_max_sharpe = pesos_aleatorios[simulacao_df['sharpe'].idxmax()]
         fig_max_sharpe = go.Figure(data=[go.Pie(labels=tickers_selecionados, values=pesos_max_sharpe, hole=.4, textinfo='label+percent')])
         fig_max_sharpe.update_layout(showlegend=False, margin=dict(l=10, r=10, t=20, b=10))
