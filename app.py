@@ -143,21 +143,21 @@ def calcular_e_mostrar_portfolio_otimo(dados_completos, tickers_selecionados, nu
     fig_fronteira = go.Figure()
     fig_fronteira.add_trace(go.Scatter(x=simulacao_df['volatilidade'], y=simulacao_df['retorno'], mode='markers', marker=dict(color=simulacao_df['sharpe'], showscale=True, colorscale='Viridis', colorbar=dict(title='Índice de Sharpe'))))
     fig_fronteira.add_trace(go.Scatter(x=[max_sharpe_port['volatilidade'], min_vol_port['volatilidade']], y=[max_sharpe_port['retorno'], min_vol_port['retorno']], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='Carteiras Otimizadas'))
-    fig_fronteira.update_layout(title='Fronteira Eficiente de Markowitz', xaxis_title='Risco (Volatilidade Anual)', yaxis_title='Retorno Anual', showlegend=False)
+    fig_fronteira.update_layout(title='Relação Risco x Investimento', xaxis_title='Risco (Volatilidade Anual)', yaxis_title='Retorno Anual', showlegend=False)
     st.plotly_chart(fig_fronteira, use_container_width=True)
     
     st.markdown("---")
-    st.markdown("#### Detalhes das Carteiras Otimizadas")
+    st.markdown("#### Análise de Carteira Ótima")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("##### Carteira de Risco Mínimo")
+        st.markdown("##### Carteira Ótima de Risco Mínimo (Markowitz)")
         pesos_min_vol = pesos_aleatorios[simulacao_df['volatilidade'].idxmin()]
         fig_min_vol = go.Figure(data=[go.Pie(labels=tickers_selecionados, values=pesos_min_vol, hole=.4, textinfo='label+percent')])
         fig_min_vol.update_layout(showlegend=False, margin=dict(l=10, r=10, t=20, b=10))
         st.plotly_chart(fig_min_vol, use_container_width=True)
         st.info(f"**Retorno:** `{(min_vol_port['retorno']*100):.2f}%` | **Risco:** `{(min_vol_port['volatilidade']*100):.2f}%`")
     with col2:
-        st.markdown("##### Carteira Ótima (Max Sharpe)")
+        st.markdown("##### Carteira Ótima Ricso Máximo")
         pesos_max_sharpe = pesos_aleatorios[simulacao_df['sharpe'].idxmax()]
         fig_max_sharpe = go.Figure(data=[go.Pie(labels=tickers_selecionados, values=pesos_max_sharpe, hole=.4, textinfo='label+percent')])
         fig_max_sharpe.update_layout(showlegend=False, margin=dict(l=10, r=10, t=20, b=10))
